@@ -1,7 +1,7 @@
 mod tutorial {
-    use std::array;
+    use std::{array, iter::MapWhile};
 
-    use chumsky::prelude::*;
+    use chumsky::{prelude::*, primitive::Just};
     use text::ident;
 
     use crate::lparser::Expr;
@@ -74,8 +74,8 @@ mod tutorial {
         WhileLoop(Box<Expression>, Vec<Statement>),
         IfStatement {
             condition: Box<Expression>,
-            thenBlock: Vec<Statement>,
-            elseBlock: Option<Vec<Statement>>,
+            then_block: Vec<Statement>,
+            else_block: Option<Vec<Statement>>,
         },
         Function {
             name: String,
@@ -90,7 +90,7 @@ mod tutorial {
 
     #[test]
     fn chumsky_tutorial() {
-        let input = r#"x = 10"#;
+        let input = r#"define foo ( a, b ) {return a + b; }"#;
         let mut parser = parser();
         let result = parser.parse(input);
         println!("{:?}", result);
@@ -124,6 +124,12 @@ mod tutorial {
         let gt = atoms('>');
         let eq = atoms('=');
         let neq = atoms('!');
+        let semicolon = atoms(';');
+        let comma = atoms(',');
+
+        // keywords
+        let func_keyword = just("define");
+        let ret_keyword: Just<char, &str, Simple<char>> = just("return");
 
         let variable = identifier;
         let field_access = identifier.then(just('.').then(identifier));
@@ -209,24 +215,51 @@ mod tutorial {
                     _ => unreachable!(),
                 });
 
+                let id_expr = identifier
+                    .padded()
+                    .map(|ident| Expression::Identifier(ident));
+
                 // Return an expression.
-                let exprs = arith_exprs.or(boolean_exprs).or(unary_expr).or(integer);
+                let exprs = arith_exprs
+                    .or(boolean_exprs)
+                    .or(unary_expr)
+                    .or(integer)
+                    .or(id_expr);
 
                 exprs
             });
 
         let array_access = identifier.then(just('[').then(expr.clone()).then(just(']')));
+        let arg_list = just('(')
+            .ignore_then(identifier.clone().separated_by(comma))
+            .then_ignore(just(')'));
 
         let statement = recursive(|statement| {
-            let variable_assignment =
-                variable
-                    .then(assignequal)
-                    .then(expr.clone())
-                    .map(|((var, _), expr)| {
-                        Statement::Assignment(Lvalue::Variable(var), Box::new(expr.clone()))
-                    });
+            let block = just('{')
+                .padded()
+                .ignore_then(statement.clone().repeated())
+                .then_ignore(just('}').padded());
 
-            variable_assignment
+            let variable_assignment = variable
+                .then(assignequal)
+                .then(expr.clone())
+                .then_ignore(semicolon)
+                .map(|((var, _), expr)| {
+                    Statement::Assignment(Lvalue::Variable(var), Box::new(expr.clone()))
+                });
+
+            let return_statement = ret_keyword
+                .ignore_then(expr.clone())
+                .then_ignore(semicolon)
+                .map(|expr| Statement::ReturnStatement(Some(expr)));
+
+            let function_decl = func_keyword
+                .ignore_then(identifier.clone())
+                .then(arg_list.clone())
+                .then(block.clone())
+                .map(|((name, args), body)| Statement::Function { name, args, body });
+
+            variable_assignment.or(function_decl).or(return_statement)
         });
 
         statement
