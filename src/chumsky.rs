@@ -48,7 +48,7 @@ mod tutorial {
             operand: Box<Expression>,
         },
         FieldAccess(String, Box<Expression>),
-        ArrayAccess(String, Box<Expression>),
+        ArrayAccess(Box<Expression>, Box<Expression>),
     }
 
     #[derive(Debug, Clone)]
@@ -90,7 +90,7 @@ mod tutorial {
 
     #[test]
     fn chumsky_tutorial() {
-        let input = r#"define foo ( a, b ) {return a + b; }"#;
+        let input = r#"define foo ( a, b ) {return a + b - c; }"#;
         let mut parser = parser();
         let result = parser.parse(input);
         println!("{:?}", result);
@@ -136,13 +136,14 @@ mod tutorial {
 
         let expr =
             recursive(|expr| {
-                let addexpr = integer.then(plus.then(integer)).map(|(lhs, (_, rhs))| {
-                    Expression::BinaryExpr {
+                let addexpr = expr
+                    .clone()
+                    .then(plus.then(expr.clone()))
+                    .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
                         operator: BinOpr::Add,
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
-                    }
-                });
+                    });
 
                 let subexpr = integer.then(minus.then(integer)).map(|(lhs, (_, rhs))| {
                     Expression::BinaryExpr {
@@ -203,7 +204,7 @@ mod tutorial {
                 let boolean_exprs = boolean_cmp_less_expr.or(boolean_cmp_greater_expr);
 
                 // Returns an int/float but is unary.
-                let unary_expr = not.or(minus).then(expr).map(|(op, expr)| match op {
+                let unary_expr = not.or(minus).then(expr.clone()).map(|(op, expr)| match op {
                     '-' => Expression::UnaryExpr {
                         operator: UnOpr::Neg,
                         operand: Box::new(expr),
@@ -220,16 +221,20 @@ mod tutorial {
                     .map(|ident| Expression::Identifier(ident));
 
                 // Return an expression.
-                let exprs = arith_exprs
-                    .or(boolean_exprs)
-                    .or(unary_expr)
+                let exprs = id_expr
                     .or(integer)
-                    .or(id_expr);
+                    .or(arith_exprs)
+                    .or(boolean_exprs)
+                    .or(unary_expr);
+                // .or(boolean_exprs)
+                // .or(unary_expr)
+                // .or(array_access)
+                // .or(integer)
+                // .or(id_expr);
 
                 exprs
             });
 
-        let array_access = identifier.then(just('[').then(expr.clone()).then(just(']')));
         let arg_list = just('(')
             .ignore_then(identifier.clone().separated_by(comma))
             .then_ignore(just(')'));
