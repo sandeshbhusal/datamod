@@ -90,7 +90,7 @@ mod tutorial {
 
     #[test]
     fn chumsky_tutorial() {
-        let input = r#"define foo ( a, b ) {return a + b - c; }"#;
+        let input = r#"define foo ( a, b ) {return a + b; }"#;
         let mut parser = parser();
         let result = parser.parse(input);
         println!("{:?}", result);
@@ -134,106 +134,103 @@ mod tutorial {
         let variable = identifier;
         let field_access = identifier.then(just('.').then(identifier));
 
-        let expr =
-            recursive(|expr| {
-                let addexpr = expr
-                    .clone()
-                    .then(plus.then(expr.clone()))
+        let expr = recursive(|expr| {
+            let addexpr = expr
+                .clone()
+                .then(plus.then(expr.clone()))
+                .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
+                    operator: BinOpr::Add,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                });
+
+            let subexpr = expr
+                .clone()
+                .then(minus.then(expr.clone()))
+                .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
+                    operator: BinOpr::Sub,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                });
+
+            let mulexpr = expr
+                .clone()
+                .then(mult.then(expr.clone()))
+                .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
+                    operator: BinOpr::Mul,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                });
+
+            let divexpr = expr
+                .clone()
+                .then(div.then(expr.clone()))
+                .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
+                    operator: BinOpr::Div,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                });
+
+            let remexpr =
+                integer
+                    .then(rem.then(integer))
                     .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
-                        operator: BinOpr::Add,
+                        operator: BinOpr::Rem,
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
                     });
 
-                let subexpr = integer.then(minus.then(integer)).map(|(lhs, (_, rhs))| {
-                    Expression::BinaryExpr {
-                        operator: BinOpr::Sub,
+            // Return some kind of integer/float.
+            let arith_exprs = addexpr.or(subexpr).or(mulexpr).or(divexpr).or(remexpr);
+
+            let boolean_cmp_less_expr =
+                integer
+                    .then(lt.then(integer))
+                    .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
+                        operator: BinOpr::BooleanCmpLess,
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
-                    }
-                });
+                    });
 
-                let mulexpr = integer.then(mult.then(integer)).map(|(lhs, (_, rhs))| {
-                    Expression::BinaryExpr {
-                        operator: BinOpr::Mul,
+            let boolean_cmp_greater_expr =
+                integer
+                    .then(gt.then(integer))
+                    .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
+                        operator: BinOpr::BooleanCmpGreater,
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
-                    }
-                });
+                    });
 
-                let divexpr =
-                    integer
-                        .then(div.then(integer))
-                        .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
-                            operator: BinOpr::Div,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        });
+            // Return some kind of boolean value.
+            let boolean_exprs = boolean_cmp_less_expr.or(boolean_cmp_greater_expr);
 
-                let remexpr =
-                    integer
-                        .then(rem.then(integer))
-                        .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
-                            operator: BinOpr::Rem,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        });
-
-                // Return some kind of integer/float.
-                let arith_exprs = addexpr.or(subexpr).or(mulexpr).or(divexpr).or(remexpr);
-
-                let boolean_cmp_less_expr =
-                    integer
-                        .then(lt.then(integer))
-                        .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
-                            operator: BinOpr::BooleanCmpLess,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        });
-
-                let boolean_cmp_greater_expr =
-                    integer
-                        .then(gt.then(integer))
-                        .map(|(lhs, (_, rhs))| Expression::BinaryExpr {
-                            operator: BinOpr::BooleanCmpGreater,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        });
-
-                // Return some kind of boolean value.
-                let boolean_exprs = boolean_cmp_less_expr.or(boolean_cmp_greater_expr);
-
-                // Returns an int/float but is unary.
-                let unary_expr = not.or(minus).then(expr.clone()).map(|(op, expr)| match op {
-                    '-' => Expression::UnaryExpr {
-                        operator: UnOpr::Neg,
-                        operand: Box::new(expr),
-                    },
-                    '!' => Expression::UnaryExpr {
-                        operator: UnOpr::Not,
-                        operand: Box::new(expr),
-                    },
-                    _ => unreachable!(),
-                });
-
-                let id_expr = identifier
-                    .padded()
-                    .map(|ident| Expression::Identifier(ident));
-
-                // Return an expression.
-                let exprs = id_expr
-                    .or(integer)
-                    .or(arith_exprs)
-                    .or(boolean_exprs)
-                    .or(unary_expr);
-                // .or(boolean_exprs)
-                // .or(unary_expr)
-                // .or(array_access)
-                // .or(integer)
-                // .or(id_expr);
-
-                exprs
+            // Returns an int/float but is unary.
+            let unary_expr = not.or(minus).then(expr.clone()).map(|(op, expr)| match op {
+                '-' => Expression::UnaryExpr {
+                    operator: UnOpr::Neg,
+                    operand: Box::new(expr),
+                },
+                '!' => Expression::UnaryExpr {
+                    operator: UnOpr::Not,
+                    operand: Box::new(expr),
+                },
+                _ => unreachable!(),
             });
+
+            let id_expr = identifier.padded().map(|ident| {
+                println!("Parsing an identifier");
+                Expression::Identifier(ident)
+            });
+
+            // Return an expression.
+            let exprs = id_expr
+                .or(integer)
+                .or(arith_exprs)
+                .or(boolean_exprs)
+                .or(unary_expr);
+
+            exprs
+        });
 
         let arg_list = just('(')
             .ignore_then(identifier.clone().separated_by(comma))
