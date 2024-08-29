@@ -1,6 +1,3 @@
-#![allow(unused)]
-
-use std::io;
-use std::io::Write;
+mod lexer;
 
 fn main() {}
