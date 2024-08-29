@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-struct Lexer<'a> {
+pub struct Lexer<'a> {
     input: &'a str,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     LBRACE,
     RBRACE,
@@ -22,11 +22,11 @@ pub enum Token {
 }
 
 impl<'a> Lexer<'a> {
-    fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         Self { input }
     }
 
-    fn parse(&mut self) -> Vec<Token> {
+    pub fn parse(&mut self) -> Vec<Token> {
         let mut iter = self.input.chars().into_iter().peekable();
         let mut tokens = Vec::new();
         let mut linum = 1;
