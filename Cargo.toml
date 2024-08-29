@@ -4,6 +4,3 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ariadne = "0.4.1"
-chumsky = "0.9.3"
-regex = "1.10.6"
