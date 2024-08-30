@@ -3,12 +3,12 @@ use super::lexer::Token;
 use std::iter::Peekable;
 
 #[derive(Debug)]
-struct Parser<'a> {
+pub struct Parser<'a> {
     tokens: Peekable<std::slice::Iter<'a, Token>>,
 }
 
 #[derive(Debug)]
-enum JsonType {
+pub enum JsonType {
     String(String),
     Boolean(bool),
     Float(f64),
@@ -26,7 +26,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_value(&mut self) -> JsonType {
-        if let Some(token) = self.tokens.peek() {
+        if let Some(token) = self.tokens.next() {
             match token {
                 Token::STRING(s) => JsonType::String(s.clone()),
                 Token::FLOAT(n) => JsonType::Float(*n),
@@ -35,7 +35,7 @@ impl<'a> Parser<'a> {
                 Token::NONE => JsonType::Null,
                 Token::LBRACE => self.parse_object(),
                 Token::LBRAC => self.parse_array(),
-                _ => panic!("Unexpected token: {:?}", token),
+                _ => panic!("Unexpected token: {:?}; remaining tokens {:?}", token, self.tokens),
             }
         } else {
             panic!("Unexpected end of tokens")
@@ -43,29 +43,91 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_object(&mut self) -> JsonType {
-        // Eat the brace token
-        self.tokens.next();
-        // Eat a string as the key.
-        let key = match self.tokens.next() {
-            Some(Token::STRING(s)) => s.clone(),
-            _ => panic!("Expected string key"),
-        };
+        let mut object = vec![];
 
-        // Eat the colon token
-        self.tokens.next();
+        loop {
+            // If the next token is a closing brace '}', return the object.
+            match self.tokens.peek() {
+                Some(&Token::RBRACE) => {
+                    // Consume the closing brace.
+                    self.tokens.next();
+                    break;
+                }
+                Some(&Token::STRING(_)) => {
+                    // Parse the key.
+                    let key_token = self.tokens.next().unwrap();
+                    let key: String = if let Token::STRING(key) = key_token {
+                        key.clone()
+                    } else {
+                        panic!("Expected a string key, got {:?}", key_token);
+                    };
 
-        // Eat the value, parse with self.parse_value
-        let value = self.parse_value();
+                    // Expect a colon.
+                    match self.tokens.next() {
+                        Some(Token::COLON) => {} // Consume the colon.
+                        other => panic!("Expected a colon after key, got {:?}", other),
+                    }
 
-        // Eat the closing brace token.
-        self.tokens.next();
+                    // Parse the value.
+                    let value = self.parse_value();
 
-        // emit object.
-        JsonType::Object(vec![(key, value)])
+                    // Add the key-value pair to the object.
+                    object.push((key, value));
+
+                    // Check the next token to decide whether to continue or end the object.
+                    match self.tokens.peek() {
+                        Some(&Token::COMMA) => {
+                            // Consume the comma and continue parsing the next key-value pair.
+                            self.tokens.next();
+                        }
+                        Some(&Token::RBRACE) => {
+                            // We are at the end of the object. Consume the closing brace.
+                            self.tokens.next();
+                            break;
+                        }
+                        other => {
+                            panic!("Expected a comma or closing brace, got {:?}", other);
+                        }
+                    }
+                }
+                _ => {
+                    panic!(
+                        "Expected a string key or closing brace, got {:?}",
+                        self.tokens.peek()
+                    );
+                }
+            }
+        }
+
+        JsonType::Object(object)
     }
 
     fn parse_array(&mut self) -> JsonType {
-        unimplemented!()
+        // parse items until we see a closing bracket.
+        // return an array.
+        let mut rval = vec![];
+        while self.tokens.peek() != Some(&&Token::RBRAC) {
+            rval.push(self.parse_value());
+            println!("rval: {:?}", rval);
+
+            // Next token could either be a comma, or a closing bracket.
+            match self.tokens.peek() {
+                Some(&Token::COMMA) => {
+                    // Consume the comma.
+                    self.tokens.next();
+                }
+                Some(&Token::RBRAC) => {
+                    // We are at the end of the array. Consume the closing bracket.
+                    self.tokens.next();
+                    break;
+                }
+                other => {
+                    panic!("Expected a comma or closing bracket, got {:?}", other);
+                }
+            }
+        }
+
+        JsonType::Array(rval)
     }
 
     fn ast(&mut self) -> JsonType {
