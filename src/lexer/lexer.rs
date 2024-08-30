@@ -79,6 +79,13 @@ impl<'a> Lexer<'a> {
                     let mut string = String::new();
                     let mut endfound = false;
                     while let Some(ch) = iter.next() {
+                        if ch == '\\' {
+                            // Escaped character.
+                            let ch = iter.next().unwrap();
+                            string.push(ch);
+                            continue;
+                        }
+
                         if ch == '"' {
                             endfound = true;
                             break;
